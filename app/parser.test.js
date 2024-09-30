@@ -1,4 +1,4 @@
-const redis = require("./redis.js");
+const redis = require("./parser.js");
 
 function toIter(string) {
     return string[Symbol.iterator]();

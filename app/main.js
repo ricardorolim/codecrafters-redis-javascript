@@ -1,4 +1,5 @@
 const net = require("net");
+const parser = require("./parser");
 const redis = require("./redis");
 
 async function* asyncStreamByteIterator(stream) {
@@ -9,11 +10,13 @@ async function* asyncStreamByteIterator(stream) {
     }
 }
 
+let redisDB = {};
+
 const server = net.createServer(async (socket) => {
     let it = asyncStreamByteIterator(socket);
-    const parser = new redis.Parser(it);
-    for await (const command of parser.parseCommand()) {
-        let response = redis.process(command);
+    const cmdParser = new parser.Parser(it);
+    for await (const command of cmdParser.parseCommand()) {
+        let response = redis.process(command, redisDB);
         socket.write(response);
     }
 });
