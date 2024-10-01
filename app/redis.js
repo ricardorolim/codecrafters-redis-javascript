@@ -1,3 +1,27 @@
+class RedisDB {
+    constructor() {
+        this.redis = {};
+    }
+
+    get(key) {
+        if (!(key in this.redis)) {
+            return;
+        }
+
+        let [value, expiration] = this.redis[key];
+        if (expiration === Infinity || expiration > Date.now()) {
+            return value;
+        }
+    }
+
+    set(key, value, expiration = Infinity) {
+        if (expiration !== Infinity) {
+            expiration = Date.now() + expiration;
+        }
+        this.redis[key] = [value, expiration];
+    }
+}
+
 function encodeBulkString(string) {
     let res = [];
     res.push("$");
@@ -18,19 +42,27 @@ function encodeNullBulkString() {
 
 function process(command, db) {
     let key = null;
+    let value = null;
 
     switch (command[0]) {
         case "ECHO":
             return encodeBulkString(command[1]);
         case "SET":
             key = command[1];
-            let value = command[2];
-            db[key] = value;
+            value = command[2];
+            let expiration = Infinity;
+
+            if (command[3]?.toLowerCase() == "px" && command.length > 4) {
+                expiration = parseInt(command[4]);
+            }
+
+            db.set(key, value, expiration);
             return encodeSimpleString("OK");
         case "GET":
             key = command[1];
-            return key in db
-                ? encodeBulkString(db[key])
+            value = db.get(key);
+            return value !== undefined
+                ? encodeBulkString(value)
                 : encodeNullBulkString();
         case "PING":
             let r = encodeSimpleString("PONG");
@@ -38,4 +70,4 @@ function process(command, db) {
     }
 }
 
-module.exports = { process };
+module.exports = { RedisDB, process };

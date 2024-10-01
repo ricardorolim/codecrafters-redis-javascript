@@ -10,7 +10,7 @@ async function* asyncStreamByteIterator(stream) {
     }
 }
 
-let redisDB = {};
+let redisDB = new redis.RedisDB();
 
 const server = net.createServer(async (socket) => {
     let it = asyncStreamByteIterator(socket);
