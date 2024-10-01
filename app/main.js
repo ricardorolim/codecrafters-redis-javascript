@@ -1,24 +1,20 @@
-const net = require("net");
-const parser = require("./parser");
-const redis = require("./redis");
+const server = require("./server.js");
 
-async function* asyncStreamByteIterator(stream) {
-    for await (const chunk of stream) {
-        for (const byte of chunk) {
-            yield String.fromCharCode(byte);
-        }
+function parseArgs() {
+    let config = {};
+    let dirIndex = process.argv.indexOf("--dir");
+
+    if (dirIndex > -1) {
+        config.dir = process.argv[dirIndex + 1];
     }
+
+    let dbfilenameIndex = process.argv.indexOf("--dbfilename");
+    if (dbfilenameIndex > -1) {
+        config.dbfilename = process.argv[dbfilenameIndex + 1];
+    }
+
+    return config;
 }
 
-let redisDB = new redis.RedisDB();
-
-const server = net.createServer(async (socket) => {
-    let it = asyncStreamByteIterator(socket);
-    const cmdParser = new parser.Parser(it);
-    for await (const command of cmdParser.parseCommand()) {
-        let response = redis.process(command, redisDB);
-        socket.write(response);
-    }
-});
-
-server.listen(6379, "127.0.0.1");
+let config = parseArgs();
+server.listen(config);

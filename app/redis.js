@@ -1,3 +1,5 @@
+const encoder = require("./encoder.js");
+
 class RedisDB {
     constructor() {
         this.redis = {};
@@ -22,31 +24,15 @@ class RedisDB {
     }
 }
 
-function encodeBulkString(string) {
-    let res = [];
-    res.push("$");
-    res.push(string.length.toString());
-    res.push("\r\n");
-    res.push(string);
-    res.push("\r\n");
-    return res.join("");
-}
-
-function encodeSimpleString(string) {
-    return `+${string}\r\n`;
-}
-
-function encodeNullBulkString() {
-    return "$-1\r\n";
-}
-
-function process(command, db) {
+function process(command, db, config) {
     let key = null;
     let value = null;
+    let resp = null;
 
     switch (command[0]) {
         case "ECHO":
-            return encodeBulkString(command[1]);
+            resp = new encoder.RedisBulkString(command[1]);
+            return resp.encode();
         case "SET":
             key = command[1];
             value = command[2];
@@ -57,16 +43,30 @@ function process(command, db) {
             }
 
             db.set(key, value, expiration);
-            return encodeSimpleString("OK");
+            resp = new encoder.RedisSimpleString("OK");
+            return resp.encode();
         case "GET":
             key = command[1];
             value = db.get(key);
-            return value !== undefined
-                ? encodeBulkString(value)
-                : encodeNullBulkString();
+            resp =
+                value !== undefined
+                    ? new encoder.RedisBulkString(value)
+                    : new encoder.RedisNullBulkString();
+            return resp.encode();
         case "PING":
-            let r = encodeSimpleString("PONG");
-            return r;
+            resp = new encoder.RedisSimpleString("PONG");
+            return resp.encode();
+        case "CONFIG":
+            if (command[1] == "GET") {
+                let key = command[2];
+                let keyBulkString = new encoder.RedisBulkString(key);
+                let valueBulkString = new encoder.RedisBulkString(config[key]);
+                let array = new encoder.RedisArray([
+                    keyBulkString,
+                    valueBulkString,
+                ]);
+                return array.encode();
+            }
     }
 }
 
