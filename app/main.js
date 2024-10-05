@@ -13,6 +13,11 @@ function parseArgs() {
         config.dbfilename = process.argv[dbfilenameIndex + 1];
     }
 
+    let portIndex = process.argv.indexOf("--port");
+    if (portIndex > -1) {
+        config.port = parseInt(process.argv[portIndex + 1]);
+    }
+
     return config;
 }
 

@@ -6,9 +6,12 @@ const redis = require("./redis.js");
 const rdb = require("./rdb.js");
 
 class Config {
+    DEFAULT_PORT = 6379;
+
     constructor() {
         this.dir = "";
         this.dbfilename = "";
+        this.port = this.DEFAULT_PORT;
     }
 
     dbpath() {
@@ -52,7 +55,7 @@ async function listen(cfg) {
         }
     });
 
-    server.listen(6379, "127.0.0.1");
+    server.listen(cfg.port, "127.0.0.1");
 }
 
 module.exports = { Config, listen };
