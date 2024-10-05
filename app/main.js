@@ -1,4 +1,4 @@
-const server = require("./server.js");
+const server = require("./redis.js");
 
 function parseArgs() {
     let config = new server.Config();
@@ -22,4 +22,5 @@ function parseArgs() {
 }
 
 let config = parseArgs();
-server.listen(config);
+const redis = new server.Redis(config);
+redis.listen(config);
