@@ -18,6 +18,12 @@ function parseArgs() {
         config.port = parseInt(process.argv[portIndex + 1]);
     }
 
+    let replicaofIndex = process.argv.indexOf("--replicaof");
+    if (replicaofIndex > -1) {
+        let master = process.argv[replicaofIndex + 1];
+        [config.master_host, config.master_port] = master.split();
+    }
+
     return config;
 }
 
