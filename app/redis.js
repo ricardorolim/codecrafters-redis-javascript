@@ -1,4 +1,4 @@
-const encoder = require("./encoder.js");
+const enc = require("./encoder.js");
 
 const fs = require("fs");
 const net = require("net");
@@ -82,6 +82,8 @@ class Redis {
 
         if (this.config.masterSet()) {
             this.info.role = Role.SLAVE;
+
+            this.masterHandshake();
         }
 
         const server = net.createServer(async (socket) => {
@@ -101,6 +103,21 @@ class Redis {
         server.listen(this.config.port, "127.0.0.1");
     }
 
+    masterHandshake() {
+        console.log({
+            host: this.config.master_host,
+            port: this.config.master_port,
+        });
+        const client = net.createConnection(
+            { host: this.config.master_host, port: this.config.master_port },
+            async () => {
+                let ping = new enc.RedisBulkString("PING");
+                let resp = new enc.RedisArray([ping]);
+                client.write(resp.encode());
+            },
+        );
+    }
+
     process(command) {
         let key = null;
         let value = null;
@@ -108,7 +125,7 @@ class Redis {
 
         switch (command[0]) {
             case "ECHO":
-                resp = new encoder.RedisBulkString(command[1]);
+                resp = new enc.RedisBulkString(command[1]);
                 return resp.encode();
             case "SET":
                 key = command[1];
@@ -120,27 +137,27 @@ class Redis {
                 }
 
                 this.db.set(key, value, expiration);
-                resp = new encoder.RedisSimpleString("OK");
+                resp = new enc.RedisSimpleString("OK");
                 return resp.encode();
             case "GET":
                 key = command[1];
                 value = this.db.get(key);
                 resp =
                     value !== undefined
-                        ? new encoder.RedisBulkString(value)
-                        : new encoder.RedisNullBulkString();
+                        ? new enc.RedisBulkString(value)
+                        : new enc.RedisNullBulkString();
                 return resp.encode();
             case "PING":
-                resp = new encoder.RedisSimpleString("PONG");
+                resp = new enc.RedisSimpleString("PONG");
                 return resp.encode();
             case "CONFIG":
                 if (command[1] == "GET") {
                     let key = command[2];
-                    let keyBulkString = new encoder.RedisBulkString(key);
-                    let valueBulkString = new encoder.RedisBulkString(
+                    let keyBulkString = new enc.RedisBulkString(key);
+                    let valueBulkString = new enc.RedisBulkString(
                         this.config[key],
                     );
-                    let array = new encoder.RedisArray([
+                    let array = new enc.RedisArray([
                         keyBulkString,
                         valueBulkString,
                     ]);
@@ -150,15 +167,15 @@ class Redis {
                 if (command[1] == "*") {
                     let keys = this.db
                         .keys()
-                        .map((key) => new encoder.RedisBulkString(key));
-                    let array = new encoder.RedisArray(keys);
+                        .map((key) => new enc.RedisBulkString(key));
+                    let array = new enc.RedisArray(keys);
                     return array.encode();
                 }
                 break;
             case "INFO":
                 if (command[1].toLowerCase() == "replication") {
                     let role = this.info.toString();
-                    let info = new encoder.RedisBulkString(role);
+                    let info = new enc.RedisBulkString(role);
                     return info.encode();
                 }
                 break;

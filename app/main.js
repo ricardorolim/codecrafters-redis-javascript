@@ -21,7 +21,9 @@ function parseArgs() {
     let replicaofIndex = process.argv.indexOf("--replicaof");
     if (replicaofIndex > -1) {
         let master = process.argv[replicaofIndex + 1];
-        [config.master_host, config.master_port] = master.split();
+        [config.master_host, config.master_port] = master
+            .split(" ")
+            .filter((i) => i);
     }
 
     return config;
