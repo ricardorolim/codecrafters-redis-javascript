@@ -1,6 +1,28 @@
+const fs = require("fs");
 const net = require("net");
-const parser = require("./parser.js");
+const path = require("path");
+const resp_parser = require("./resp_parser.js");
 const redis = require("./redis.js");
+const rdb = require("./rdb.js");
+
+class Config {
+    constructor() {
+        this.dir = "";
+        this.dbfilename = "";
+    }
+
+    dbpath() {
+        return path.join(this.dir, this.dbfilename);
+    }
+
+    isValid() {
+        if (this.dir === "" && this.dbfilename === "") {
+            return false;
+        }
+
+        return fs.existsSync(this.dbpath());
+    }
+}
 
 async function* asyncStreamByteIterator(stream) {
     for await (const chunk of stream) {
@@ -10,14 +32,22 @@ async function* asyncStreamByteIterator(stream) {
     }
 }
 
-let redisDB = new redis.RedisDB();
+async function listen(cfg) {
+    let db = {};
 
-function listen(config) {
+    if (cfg.isValid()) {
+        let rdbFile = fs.createReadStream(cfg.dbpath());
+        let parser = new rdb.RDBParser(rdbFile);
+        db = await parser.parse();
+    }
+
+    let redisDB = new rdb.RedisDB(db);
+
     const server = net.createServer(async (socket) => {
         let it = asyncStreamByteIterator(socket);
-        const cmdParser = new parser.Parser(it);
+        const cmdParser = new resp_parser.RespParser(it);
         for await (const command of cmdParser.parseCommand()) {
-            let response = redis.process(command, redisDB, config);
+            let response = redis.process(command, redisDB, cfg);
             socket.write(response);
         }
     });
@@ -25,4 +55,4 @@ function listen(config) {
     server.listen(6379, "127.0.0.1");
 }
 
-module.exports = { listen };
+module.exports = { Config, listen };

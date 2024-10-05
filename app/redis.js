@@ -1,29 +1,5 @@
 const encoder = require("./encoder.js");
 
-class RedisDB {
-    constructor() {
-        this.redis = {};
-    }
-
-    get(key) {
-        if (!(key in this.redis)) {
-            return;
-        }
-
-        let [value, expiration] = this.redis[key];
-        if (expiration === Infinity || expiration > Date.now()) {
-            return value;
-        }
-    }
-
-    set(key, value, expiration = Infinity) {
-        if (expiration !== Infinity) {
-            expiration = Date.now() + expiration;
-        }
-        this.redis[key] = [value, expiration];
-    }
-}
-
 function process(command, db, config) {
     let key = null;
     let value = null;
@@ -67,7 +43,16 @@ function process(command, db, config) {
                 ]);
                 return array.encode();
             }
+        case "KEYS":
+            if (command[1] == "*") {
+                let keys = db
+                    .keys()
+                    .map((key) => new encoder.RedisBulkString(key));
+                let array = new encoder.RedisArray(keys);
+                return array.encode();
+            }
+            break;
     }
 }
 
-module.exports = { RedisDB, process };
+module.exports = { process };

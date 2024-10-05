@@ -1,4 +1,4 @@
-const redis = require("./redis.js");
+const redis = require("./rdb.js");
 
 test("set value without expiration", () => {
     const db = new redis.RedisDB();

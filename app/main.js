@@ -1,7 +1,7 @@
 const server = require("./server.js");
 
 function parseArgs() {
-    let config = {};
+    let config = new server.Config();
     let dirIndex = process.argv.indexOf("--dir");
 
     if (dirIndex > -1) {
