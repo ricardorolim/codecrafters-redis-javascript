@@ -113,11 +113,9 @@ class Redis {
                 }
 
                 // step 2
-                req = new enc.RedisArray([
-                    new enc.RedisBulkString("REPLCONF"),
-                    new enc.RedisBulkString("listening-port"),
-                    new enc.RedisBulkString(this.config.port.toString()),
-                ]);
+                req = enc.splitToRedisArray(
+                    `REPLCONF listening-port ${this.config.port}`,
+                );
                 client.write(req.encode());
 
                 exp = new enc.RedisSimpleString("OK");
@@ -126,16 +124,16 @@ class Redis {
                 }
 
                 // step 3
-                req = new enc.RedisArray([
-                    new enc.RedisBulkString("REPLCONF"),
-                    new enc.RedisBulkString("capa"),
-                    new enc.RedisBulkString("psync2"),
-                ]);
+                req = new enc.splitToRedisArray("REPLCONF capa psync2");
                 client.write(req.encode());
 
                 if (await this.expect(exp.encode(), client)) {
                     throw new Error(`handshake error: expected OK, got ${exp}`);
                 }
+
+                // step 4
+                req = enc.splitToRedisArray("PSYNC ? -1");
+                client.write(req.encode());
             },
         );
     }

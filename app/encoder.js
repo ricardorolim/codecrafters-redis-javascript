@@ -15,6 +15,15 @@ class RedisArray {
     }
 }
 
+function splitToRedisArray(string) {
+    let array = [];
+    string.split(" ").forEach((s) => {
+        array.push(new RedisBulkString(s));
+    });
+
+    return new RedisArray(array);
+}
+
 class RedisBulkString {
     constructor(string) {
         this.string = string;
@@ -52,4 +61,5 @@ module.exports = {
     RedisBulkString,
     RedisNullBulkString,
     RedisSimpleString,
+    splitToRedisArray,
 };
