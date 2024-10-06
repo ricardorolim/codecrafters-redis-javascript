@@ -60,6 +60,7 @@ class Redis {
         this.config = config;
         this.db = null;
         this.info = new Info();
+        this.slaves = [];
     }
 
     async listen() {
@@ -75,7 +76,6 @@ class Redis {
 
         if (this.config.masterSet()) {
             this.info.role = Role.SLAVE;
-
             this.masterHandshake();
         }
 
@@ -93,6 +93,10 @@ class Redis {
         });
 
         server.listen(this.config.port, "127.0.0.1");
+    }
+
+    isMaster() {
+        return this.info.role == Role.MASTER;
     }
 
     masterHandshake() {
@@ -150,6 +154,19 @@ class Redis {
         return true;
     }
 
+    sendToSlaves(command) {
+        for (const socket of this.slaves) {
+            let strings = [];
+
+            for (let str of command) {
+                strings.push(new enc.RedisBulkString(str));
+            }
+
+            const array = new enc.RedisArray(strings);
+            socket.write(array.encode());
+        }
+    }
+
     process(command, socket) {
         let key = null;
         let value = null;
@@ -170,8 +187,14 @@ class Redis {
                 }
 
                 this.db.set(key, value, expiration);
-                resp = new enc.RedisSimpleString("OK");
-                socket.write(resp.encode());
+
+                if (this.isMaster()) {
+                    resp = new enc.RedisSimpleString("OK");
+                    socket.write(resp.encode());
+
+                    this.sendToSlaves(command);
+                }
+
                 break;
             case "GET":
                 key = command[1];
@@ -228,6 +251,8 @@ class Redis {
                 // tester is implemented
                 socket.write(`$${db.length}\r\n`);
                 socket.write(db);
+
+                this.slaves.push(socket);
                 break;
             default:
                 console.error("unknown command:", command[0]);
