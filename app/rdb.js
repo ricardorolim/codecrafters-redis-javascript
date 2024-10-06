@@ -32,18 +32,10 @@ class RedisDB {
     }
 }
 
-async function* asyncStreamByteIterator(stream) {
-    for await (const chunk of stream) {
-        for (const byte of chunk) {
-            yield byte;
-        }
-    }
-}
-
 class RDBParser {
     constructor(stream) {
         this.index = 0;
-        let it = asyncStreamByteIterator(stream);
+        let it = parser.asyncStreamToByteIterator(stream);
         this.it = new parser.PeekableIterator(it);
     }
 

@@ -3,6 +3,7 @@ const enc = require("./encoder.js");
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
+const parser = require("./parser.js");
 const resp_parser = require("./resp_parser.js");
 const rdb = require("./rdb.js");
 
@@ -54,14 +55,6 @@ class Info {
     }
 }
 
-async function* asyncStreamByteIterator(stream) {
-    for await (const chunk of stream) {
-        for (const byte of chunk) {
-            yield String.fromCharCode(byte);
-        }
-    }
-}
-
 class Redis {
     constructor(config) {
         this.config = config;
@@ -87,7 +80,7 @@ class Redis {
         }
 
         const server = net.createServer(async (socket) => {
-            let it = asyncStreamByteIterator(socket);
+            let it = parser.asyncStreamToByteIterator(socket);
             const cmdParser = new resp_parser.RespParser(it);
 
             try {
@@ -104,18 +97,60 @@ class Redis {
     }
 
     masterHandshake() {
-        console.log({
-            host: this.config.master_host,
-            port: this.config.master_port,
-        });
         const client = net.createConnection(
             { host: this.config.master_host, port: this.config.master_port },
             async () => {
+                // step 1
                 let ping = new enc.RedisBulkString("PING");
-                let resp = new enc.RedisArray([ping]);
-                client.write(resp.encode());
+                let req = new enc.RedisArray([ping]);
+                client.write(req.encode());
+
+                let exp = new enc.RedisSimpleString("PONG");
+                if (await this.expect(exp.encode(), client)) {
+                    throw new Error(
+                        `handshake error: expected PONG, got ${exp}`,
+                    );
+                }
+
+                // step 2
+                req = new enc.RedisArray([
+                    new enc.RedisBulkString("REPLCONF"),
+                    new enc.RedisBulkString("listening-port"),
+                    new enc.RedisBulkString(this.config.port.toString()),
+                ]);
+                client.write(req.encode());
+
+                exp = new enc.RedisSimpleString("OK");
+                if (await this.expect(exp.encode(), client)) {
+                    throw new Error(`handshake error: expected OK, got ${exp}`);
+                }
+
+                // step 3
+                req = new enc.RedisArray([
+                    new enc.RedisBulkString("REPLCONF"),
+                    new enc.RedisBulkString("capa"),
+                    new enc.RedisBulkString("psync2"),
+                ]);
+                client.write(req.encode());
+
+                if (await this.expect(exp.encode(), client)) {
+                    throw new Error(`handshake error: expected OK, got ${exp}`);
+                }
             },
         );
+    }
+
+    async expect(string, socket) {
+        let it = socket[Symbol.asyncIterator]();
+
+        for (const c of string) {
+            let v = await it.next();
+            if (c != v.value) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     process(command) {
@@ -179,6 +214,9 @@ class Redis {
                     return info.encode();
                 }
                 break;
+            case "REPLCONF":
+                let ok = new enc.RedisSimpleString("OK");
+                return ok.encode();
             default:
                 console.error("unknown command:", command[0]);
         }

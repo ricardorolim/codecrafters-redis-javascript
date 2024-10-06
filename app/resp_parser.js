@@ -5,6 +5,15 @@ class RespParser {
         this.bytes = new parser.PeekableIterator(bytes);
     }
 
+    async next() {
+        let byte = await this.bytes.next();
+        if (!byte.done) {
+            byte.value = String.fromCharCode(byte.value);
+        }
+
+        return byte;
+    }
+
     async *parseCommand() {
         for (;;) {
             let v = await this.bytes.peek();
@@ -30,7 +39,7 @@ class RespParser {
     }
 
     async parseElement() {
-        const v = await this.bytes.next();
+        const v = await this.next();
         const header = v.value;
 
         switch (header) {
@@ -38,13 +47,15 @@ class RespParser {
                 return this.parseArray();
             case "$":
                 return this.parseBulkString();
+            case "+":
+                return this.parseSimpleString();
             default:
                 return new Error(`invalid command header: ${header}`);
         }
     }
 
     async expect(byte) {
-        const v = await this.bytes.next();
+        const v = await this.next();
         let curr = v.value;
 
         if (curr != byte) {
@@ -61,7 +72,7 @@ class RespParser {
         let length = [];
 
         for (;;) {
-            let byte = await this.bytes.next();
+            let byte = await this.next();
             if (byte.done) {
                 break;
             }
@@ -77,10 +88,30 @@ class RespParser {
         return parseInt(length.join(""));
     }
 
+    async parseSimpleString() {
+        let string = "";
+
+        for (;;) {
+            let byte = await this.next();
+
+            if (byte.done) {
+                break;
+            }
+            if (byte === "\r") {
+                await this.expect("\n");
+                break;
+            }
+
+            string += byte.value;
+        }
+
+        return string;
+    }
+
     async parseString(length) {
         let data = [];
         for (let i = 0; i < length; i++) {
-            const v = await this.bytes.next();
+            const v = await this.next();
             data.push(v.value);
         }
 

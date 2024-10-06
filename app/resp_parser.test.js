@@ -1,7 +1,7 @@
 const redis = require("./resp_parser.js");
 
 function toIter(string) {
-    return string[Symbol.iterator]();
+    return Buffer.from(string)[Symbol.iterator]();
 }
 
 test("parse length", () => {
