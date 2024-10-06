@@ -85,8 +85,7 @@ class Redis {
 
             try {
                 for await (const command of cmdParser.parseCommand()) {
-                    let response = this.process(command);
-                    socket.write(response);
+                    this.process(command, socket);
                 }
             } catch (err) {
                 console.error(err);
@@ -151,7 +150,7 @@ class Redis {
         return true;
     }
 
-    process(command) {
+    process(command, socket) {
         let key = null;
         let value = null;
         let resp = null;
@@ -159,7 +158,8 @@ class Redis {
         switch (command[0]) {
             case "ECHO":
                 resp = new enc.RedisBulkString(command[1]);
-                return resp.encode();
+                socket.write(resp.encode());
+                break;
             case "SET":
                 key = command[1];
                 value = command[2];
@@ -171,7 +171,8 @@ class Redis {
 
                 this.db.set(key, value, expiration);
                 resp = new enc.RedisSimpleString("OK");
-                return resp.encode();
+                socket.write(resp.encode());
+                break;
             case "GET":
                 key = command[1];
                 value = this.db.get(key);
@@ -179,10 +180,12 @@ class Redis {
                     value !== undefined
                         ? new enc.RedisBulkString(value)
                         : new enc.RedisNullBulkString();
-                return resp.encode();
+                socket.write(resp.encode());
+                break;
             case "PING":
                 resp = new enc.RedisSimpleString("PONG");
-                return resp.encode();
+                socket.write(resp.encode());
+                break;
             case "CONFIG":
                 if (command[1] == "GET") {
                     let key = command[2];
@@ -190,38 +193,42 @@ class Redis {
                     let valueBulkString = new enc.RedisBulkString(
                         this.config[key],
                     );
-                    let array = new enc.RedisArray([
-                        keyBulkString,
-                        valueBulkString,
-                    ]);
-                    return array.encode();
+                    resp = new enc.RedisArray([keyBulkString, valueBulkString]);
+                    socket.write(resp.encode());
                 }
+                break;
             case "KEYS":
                 if (command[1] == "*") {
                     let keys = this.db
                         .keys()
                         .map((key) => new enc.RedisBulkString(key));
-                    let array = new enc.RedisArray(keys);
-                    return array.encode();
+                    resp = new enc.RedisArray(keys);
+                    socket.write(resp.encode());
                 }
                 break;
             case "INFO":
                 if (command[1].toLowerCase() == "replication") {
                     let role = this.info.toString();
-                    let info = new enc.RedisBulkString(role);
-                    return info.encode();
+                    resp = new enc.RedisBulkString(role);
+                    socket.write(resp.encode());
                 }
                 break;
-            case "REPLCONF": {
-                let ok = new enc.RedisSimpleString("OK");
-                return ok.encode();
-            }
-            case "PSYNC": {
-                let ok = new enc.RedisSimpleString(
+            case "REPLCONF":
+                resp = new enc.RedisSimpleString("OK");
+                socket.write(resp.encode());
+                break;
+            case "PSYNC":
+                resp = new enc.RedisSimpleString(
                     "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0",
                 );
-                return ok.encode();
-            }
+                socket.write(resp.encode());
+
+                let db = rdb.encodeEmptyRDB();
+                // the length has to be sent separately because of a bug in how the CodeCrafter
+                // tester is implemented
+                socket.write(`$${db.length}\r\n`);
+                socket.write(db);
+                break;
             default:
                 console.error("unknown command:", command[0]);
         }
