@@ -212,9 +212,16 @@ class Redis {
                     return info.encode();
                 }
                 break;
-            case "REPLCONF":
+            case "REPLCONF": {
                 let ok = new enc.RedisSimpleString("OK");
                 return ok.encode();
+            }
+            case "PSYNC": {
+                let ok = new enc.RedisSimpleString(
+                    "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0",
+                );
+                return ok.encode();
+            }
             default:
                 console.error("unknown command:", command[0]);
         }
