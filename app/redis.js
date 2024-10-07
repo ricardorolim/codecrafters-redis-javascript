@@ -304,7 +304,7 @@ class Redis {
                 this.slaves.push(socket);
                 break;
             case "WAIT":
-                resp = new enc.RedisInteger(0);
+                resp = new enc.RedisInteger(this.slaves.length);
                 socket.write(resp.encode());
                 break;
             default:
