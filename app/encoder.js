@@ -56,10 +56,21 @@ class RedisNullBulkString {
     }
 }
 
+class RedisInteger {
+    constructor(int) {
+        this.int = int;
+    }
+
+    encode() {
+        return `:${this.int}\r\n`;
+    }
+}
+
 module.exports = {
     RedisArray,
     RedisBulkString,
     RedisNullBulkString,
     RedisSimpleString,
+    RedisInteger,
     splitToRedisArray,
 };

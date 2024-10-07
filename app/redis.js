@@ -303,6 +303,10 @@ class Redis {
 
                 this.slaves.push(socket);
                 break;
+            case "WAIT":
+                resp = new enc.RedisInteger(0);
+                socket.write(resp.encode());
+                break;
             default:
                 console.error("unknown command:", command[0]);
         }
