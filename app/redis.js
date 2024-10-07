@@ -262,8 +262,17 @@ class Redis {
                 }
                 break;
             case "REPLCONF":
-                resp = new enc.RedisSimpleString("OK");
-                socket.write(resp.encode());
+                if (command[1] == "GETACK") {
+                    resp = new enc.RedisArray([
+                        new enc.RedisBulkString("REPLCONF"),
+                        new enc.RedisBulkString("ACK"),
+                        new enc.RedisBulkString("0"),
+                    ]);
+                    socket.write(resp.encode());
+                } else {
+                    resp = new enc.RedisSimpleString("OK");
+                    socket.write(resp.encode());
+                }
                 break;
             case "PSYNC":
                 resp = new enc.RedisSimpleString(
