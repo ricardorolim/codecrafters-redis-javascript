@@ -35,7 +35,7 @@ class RedisDB {
 class RDBParser {
     constructor(stream) {
         this.index = 0;
-        let it = parser.asyncStreamToByteIterator(stream);
+        let it = parser.streamToIterator(stream);
         this.it = new parser.PeekableIterator(it);
     }
 

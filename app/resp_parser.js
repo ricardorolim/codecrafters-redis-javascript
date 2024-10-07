@@ -97,7 +97,7 @@ class RespParser {
             if (byte.done) {
                 break;
             }
-            if (byte === "\r") {
+            if (byte.value === "\r") {
                 await this.expect("\n");
                 break;
             }
@@ -118,6 +118,32 @@ class RespParser {
         await this.expect("\r");
         await this.expect("\n");
         return data.join("");
+    }
+
+    async parseFullResync() {
+        let msg = "";
+
+        for (;;) {
+            let byte = await this.next();
+            if (byte.done) {
+                break;
+            }
+
+            if (byte.value == "\r") {
+                await this.expect("\n");
+                break;
+            }
+
+            msg += byte.value;
+        }
+
+        let parts = msg.split(" ");
+        if (parts.length !== 3 || parts[0] !== "+FULLRESYNC") {
+            throw new Error("invalid FULLRESYNC message: ", msg);
+        }
+
+        // master replication id
+        return parts[1];
     }
 }
 

@@ -80,7 +80,7 @@ class Redis {
         }
 
         const server = net.createServer(async (socket) => {
-            let it = parser.asyncStreamToByteIterator(socket);
+            let it = parser.streamToIterator(socket);
             const cmdParser = new resp_parser.RespParser(it);
 
             try {
@@ -100,58 +100,83 @@ class Redis {
     }
 
     masterHandshake() {
-        const client = net.createConnection(
+        const master = net.createConnection(
             { host: this.config.master_host, port: this.config.master_port },
             async () => {
+                let it = parser.streamToIterator(master);
+
                 // step 1
                 let ping = new enc.RedisBulkString("PING");
                 let req = new enc.RedisArray([ping]);
-                client.write(req.encode());
+                master.write(req.encode());
 
                 let exp = new enc.RedisSimpleString("PONG");
-                if (await this.expect(exp.encode(), client)) {
-                    throw new Error(
-                        `handshake error: expected PONG, got ${exp}`,
-                    );
+                if (await this.expect(exp.encode(), it)) {
+                    throw new Error("handshake error: expected PONG");
                 }
 
                 // step 2
                 req = enc.splitToRedisArray(
                     `REPLCONF listening-port ${this.config.port}`,
                 );
-                client.write(req.encode());
+                master.write(req.encode());
 
                 exp = new enc.RedisSimpleString("OK");
-                if (await this.expect(exp.encode(), client)) {
-                    throw new Error(`handshake error: expected OK, got ${exp}`);
+                if (await this.expect(exp.encode(), it)) {
+                    throw new Error("handshake error: expected OK");
                 }
 
                 // step 3
                 req = new enc.splitToRedisArray("REPLCONF capa psync2");
-                client.write(req.encode());
+                master.write(req.encode());
 
-                if (await this.expect(exp.encode(), client)) {
-                    throw new Error(`handshake error: expected OK, got ${exp}`);
+                if (await this.expect(exp.encode(), it)) {
+                    throw new Error("handshake error: expected OK");
                 }
 
                 // step 4
                 req = enc.splitToRedisArray("PSYNC ? -1");
-                client.write(req.encode());
+                master.write(req.encode());
+
+                const cmdParser = new resp_parser.RespParser(it);
+                await cmdParser.parseFullResync();
+
+                this.db = await this.receiveDB(it, cmdParser);
+
+                try {
+                    for await (const command of cmdParser.parseCommand()) {
+                        this.process(command, master);
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
             },
         );
     }
 
-    async expect(string, socket) {
-        let it = socket[Symbol.asyncIterator]();
-
+    async expect(string, iterator) {
         for (const c of string) {
-            let v = await it.next();
-            if (c != v.value) {
-                return false;
+            let v = await iterator.next();
+            if (c != String.fromCharCode(v.value)) {
+                return true;
             }
         }
 
-        return true;
+        return false;
+    }
+
+    async receiveDB(iterator, cmdParser) {
+        await this.expect("$", iterator);
+
+        let length = await cmdParser.parseLength();
+        let db = [];
+
+        for (let i = 0; i < length; i++) {
+            let byte = await iterator.next();
+            db.push(byte.value);
+        }
+
+        return new rdb.RedisDB(db);
     }
 
     sendToSlaves(command) {
@@ -242,13 +267,13 @@ class Redis {
                 break;
             case "PSYNC":
                 resp = new enc.RedisSimpleString(
-                    "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0",
+                    `FULLRESYNC ${this.info.master_replid} 0`,
                 );
                 socket.write(resp.encode());
 
-                let db = rdb.encodeEmptyRDB();
                 // the length has to be sent separately because of a bug in how the CodeCrafter
                 // tester is implemented
+                let db = rdb.encodeEmptyRDB();
                 socket.write(`$${db.length}\r\n`);
                 socket.write(db);
 

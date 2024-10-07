@@ -25,12 +25,13 @@ class PeekableIterator {
     }
 }
 
-async function* asyncStreamToByteIterator(stream) {
+async function* streamToIterator(stream) {
     for await (const chunk of stream) {
-        for (const byte of chunk) {
-            yield byte;
-        }
+        yield* chunk;
     }
 }
 
-module.exports = { PeekableIterator, asyncStreamToByteIterator };
+module.exports = {
+    PeekableIterator,
+    streamToIterator,
+};
