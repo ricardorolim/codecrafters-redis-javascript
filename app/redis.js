@@ -61,6 +61,7 @@ class Redis {
         this.db = null;
         this.info = new Info();
         this.slaves = [];
+        this.replOffset = 0;
     }
 
     async listen() {
@@ -103,7 +104,15 @@ class Redis {
         const master = net.createConnection(
             { host: this.config.master_host, port: this.config.master_port },
             async () => {
-                let it = parser.streamToIterator(master);
+                let offset = 0;
+
+                let it = (async function* () {
+                    let it = parser.streamToIterator(master);
+                    for await (const byte of it) {
+                        offset += 1;
+                        yield byte;
+                    }
+                })();
 
                 // step 1
                 let ping = new enc.RedisBulkString("PING");
@@ -143,9 +152,12 @@ class Redis {
 
                 this.db = await this.receiveDB(it, cmdParser);
 
+                offset = 0;
+
                 try {
                     for await (const command of cmdParser.parseCommand()) {
                         this.process(command, master);
+                        this.replOffset = offset;
                     }
                 } catch (err) {
                     console.error(err);
@@ -232,7 +244,9 @@ class Redis {
                 break;
             case "PING":
                 resp = new enc.RedisSimpleString("PONG");
-                socket.write(resp.encode());
+                if (this.isMaster()) {
+                    socket.write(resp.encode());
+                }
                 break;
             case "CONFIG":
                 if (command[1] == "GET") {
@@ -263,10 +277,11 @@ class Redis {
                 break;
             case "REPLCONF":
                 if (command[1] == "GETACK") {
+                    let offset = this.replOffset;
                     resp = new enc.RedisArray([
                         new enc.RedisBulkString("REPLCONF"),
                         new enc.RedisBulkString("ACK"),
-                        new enc.RedisBulkString("0"),
+                        new enc.RedisBulkString(offset.toString()),
                     ]);
                     socket.write(resp.encode());
                 } else {
