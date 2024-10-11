@@ -3,6 +3,7 @@ const enc = require("./encoder.js");
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
+const emitter = require("events");
 const parser = require("./parser.js");
 const resp_parser = require("./resp_parser.js");
 const rdb = require("./rdb.js");
@@ -61,7 +62,9 @@ class Redis {
         this.db = null;
         this.info = new Info();
         this.slaves = [];
-        this.replOffset = 0;
+        this.slaveReplOffset = 0;
+        this.masterReplOffset = 0;
+        this.ackEmitter = new emitter();
     }
 
     async listen() {
@@ -157,7 +160,7 @@ class Redis {
                 try {
                     for await (const command of cmdParser.parseCommand()) {
                         this.process(command, master);
-                        this.replOffset = offset;
+                        this.slaveReplOffset = offset;
                     }
                 } catch (err) {
                     console.error(err);
@@ -192,19 +195,21 @@ class Redis {
     }
 
     sendToSlaves(command) {
+        let strings = [];
+        for (let str of command) {
+            strings.push(new enc.RedisBulkString(str));
+        }
+
+        const array = new enc.RedisArray(strings);
+        const req = array.encode();
+        this.masterReplOffset += req.length;
+
         for (const socket of this.slaves) {
-            let strings = [];
-
-            for (let str of command) {
-                strings.push(new enc.RedisBulkString(str));
-            }
-
-            const array = new enc.RedisArray(strings);
-            socket.write(array.encode());
+            socket.write(req);
         }
     }
 
-    process(command, socket) {
+    async process(command, socket) {
         let key = null;
         let value = null;
         let resp = null;
@@ -277,13 +282,18 @@ class Redis {
                 break;
             case "REPLCONF":
                 if (command[1] == "GETACK") {
-                    let offset = this.replOffset;
+                    // request from master
+                    let offset = this.slaveReplOffset;
                     resp = new enc.RedisArray([
                         new enc.RedisBulkString("REPLCONF"),
                         new enc.RedisBulkString("ACK"),
                         new enc.RedisBulkString(offset.toString()),
                     ]);
                     socket.write(resp.encode());
+                } else if (command[1] == "ACK") {
+                    // response from slave
+                    let offset = parseInt(command[2]);
+                    this.ackEmitter.emit("slaveAck", offset);
                 } else {
                     resp = new enc.RedisSimpleString("OK");
                     socket.write(resp.encode());
@@ -304,7 +314,37 @@ class Redis {
                 this.slaves.push(socket);
                 break;
             case "WAIT":
-                resp = new enc.RedisInteger(this.slaves.length);
+                let nreplicas = command[1];
+                let waitMs = parseInt(command[2]);
+                let count = 0;
+
+                if (this.masterReplOffset == 0) {
+                    count = this.slaves.length;
+                } else {
+                    let masterOffset = this.masterReplOffset;
+                    this.sendToSlaves("REPLCONF GETACK *".split(" "));
+
+                    let updated = new Promise((resolve) => {
+                        // whatever happens first fullfills the promise
+                        let timeout = setTimeout(resolve, waitMs);
+
+                        this.ackEmitter.on("slaveAck", (slaveOffset) => {
+                            if (slaveOffset == masterOffset) {
+                                count++;
+                            }
+
+                            if (count == nreplicas) {
+                                clearTimeout(timeout);
+                                resolve();
+                            }
+                        });
+                    });
+
+                    await updated;
+                    this.ackEmitter.removeAllListeners();
+                }
+
+                resp = new enc.RedisInteger(count);
                 socket.write(resp.encode());
                 break;
             default:
