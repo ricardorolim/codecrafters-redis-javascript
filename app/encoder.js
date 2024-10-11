@@ -66,11 +66,22 @@ class RedisInteger {
     }
 }
 
+class RedisSimpleError {
+    constructor(string) {
+        this.string = string;
+    }
+
+    encode() {
+        return `-${this.string}\r\n`;
+    }
+}
+
 module.exports = {
     RedisArray,
     RedisBulkString,
     RedisNullBulkString,
     RedisSimpleString,
     RedisInteger,
+    RedisSimpleError,
     splitToRedisArray,
 };

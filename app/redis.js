@@ -368,10 +368,18 @@ class Redis {
                 let entryValue = command[4];
 
                 let stream = new rdb.RedisStream();
-                stream.add(entryId, entryKey, entryValue);
-                this.db.set(key, stream);
+                if (this.db.in(key)) {
+                    stream = this.db.get(key);
+                }
 
-                resp = new enc.RedisBulkString(entryId);
+                try {
+                    stream.add(entryId, entryKey, entryValue);
+                    this.db.set(key, stream);
+                    resp = new enc.RedisBulkString(entryId);
+                } catch (err) {
+                    resp = new enc.RedisSimpleError(err.message);
+                }
+
                 socket.write(resp.encode());
                 break;
             default:

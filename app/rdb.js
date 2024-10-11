@@ -39,14 +39,44 @@ class RedisDB {
 class RedisStream {
     constructor() {
         this.entries = {};
+        this.lastEntryId = "0-0";
     }
 
     add(entryId, key, value) {
+        this.validate(entryId);
+
         if (!(entryId in this.entries)) {
             this.entries[entryId] = {};
         }
 
+        this.lastEntryId = entryId;
         this.entries[entryId][key] = value;
+    }
+
+    validate(entryId) {
+        if (entryId == "0-0") {
+            throw new Error(
+                "ERR The ID specified in XADD must be greater than 0-0",
+            );
+        }
+
+        let err = new Error(
+            "ERR The ID specified in XADD is equal or smaller than the target stream top item",
+        );
+
+        if (entryId == this.lastEntryId) {
+            throw err;
+        }
+
+        let [currTimestamp, currSeqno] = entryId.split("-");
+        let [lastTimestamp, lastSeqno] = this.lastEntryId.split("-");
+
+        if (
+            currTimestamp < lastTimestamp ||
+            (currTimestamp == lastTimestamp && currSeqno <= lastSeqno)
+        ) {
+            throw err;
+        }
     }
 }
 
