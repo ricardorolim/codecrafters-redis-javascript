@@ -347,6 +347,12 @@ class Redis {
                 resp = new enc.RedisInteger(count);
                 socket.write(resp.encode());
                 break;
+            case "TYPE":
+                key = command[1];
+                let type = this.db.in(key) ? "string" : "none";
+                resp = new enc.RedisSimpleString(type);
+                socket.write(resp.encode());
+                break;
             default:
                 console.error("unknown command:", command[0]);
         }
