@@ -349,8 +349,29 @@ class Redis {
                 break;
             case "TYPE":
                 key = command[1];
-                let type = this.db.in(key) ? "string" : "none";
+
+                let type = "none";
+                if (this.db.in(key)) {
+                    type =
+                        this.db.get(key) instanceof rdb.RedisStream
+                            ? "stream"
+                            : "string";
+                }
+
                 resp = new enc.RedisSimpleString(type);
+                socket.write(resp.encode());
+                break;
+            case "XADD":
+                key = command[1];
+                let entryId = command[2];
+                let entryKey = command[3];
+                let entryValue = command[4];
+
+                let stream = new rdb.RedisStream();
+                stream.add(entryId, entryKey, entryValue);
+                this.db.set(key, stream);
+
+                resp = new enc.RedisBulkString(entryId);
                 socket.write(resp.encode());
                 break;
             default:

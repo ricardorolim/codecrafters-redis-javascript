@@ -36,6 +36,20 @@ class RedisDB {
     }
 }
 
+class RedisStream {
+    constructor() {
+        this.entries = {};
+    }
+
+    add(entryId, key, value) {
+        if (!(entryId in this.entries)) {
+            this.entries[entryId] = {};
+        }
+
+        this.entries[entryId][key] = value;
+    }
+}
+
 class RDBParser {
     constructor(stream) {
         this.index = 0;
@@ -212,4 +226,4 @@ function encodeEmptyRDB() {
     );
 }
 
-module.exports = { RedisDB, RDBParser, encodeEmptyRDB };
+module.exports = { RedisDB, RDBParser, RedisStream, encodeEmptyRDB };
