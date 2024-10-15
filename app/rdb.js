@@ -61,7 +61,12 @@ class RedisStream {
     }
 
     validate(entryId) {
-        if (entryId == "0-0") {
+        let [currTimestamp, currSeqno] = this.parseEntry(entryId);
+        if (entryId == "*" || currSeqno == "*") {
+            return;
+        }
+
+        if (currTimestamp == 0 && currSeqno == 0) {
             throw new Error(
                 "ERR The ID specified in XADD must be greater than 0-0",
             );
@@ -71,14 +76,11 @@ class RedisStream {
             "ERR The ID specified in XADD is equal or smaller than the target stream top item",
         );
 
-        if (entryId == this.buildEntry(this.lastTimestamp, this.lastSeqno)) {
+        if (
+            currTimestamp == this.lastTimestamp &&
+            currSeqno == this.lastSeqno
+        ) {
             throw err;
-        }
-
-        let [currTimestamp, currSeqno] = this.parseEntry(entryId);
-
-        if (currSeqno == "*") {
-            return;
         }
 
         if (
@@ -90,18 +92,16 @@ class RedisStream {
     }
 
     autogenerateId(entryId) {
-        let currTimestamp = this.parseEntry(entryId)[0];
+        let currTimestamp =
+            entryId == "*" ? Date.now() : this.parseEntry(entryId)[0];
         let currSeqno =
             currTimestamp == this.lastTimestamp ? this.lastSeqno + 1 : 0;
-        return this.buildEntry(currTimestamp, currSeqno);
+
+        return `${currTimestamp}-${currSeqno}`;
     }
 
     parseEntry(entryId) {
         return entryId.split("-").map((s) => parseInt(s));
-    }
-
-    buildEntry(timestamp, seqno) {
-        return `${timestamp}-${seqno}`;
     }
 }
 
