@@ -31,4 +31,4 @@ function parseArgs() {
 
 let config = parseArgs();
 const redis = new server.Redis(config);
-redis.listen(config);
+redis.listen();

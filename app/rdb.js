@@ -39,18 +39,25 @@ class RedisDB {
 class RedisStream {
     constructor() {
         this.entries = {};
-        this.lastEntryId = "0-0";
+        this.lastTimestamp = 0;
+        this.lastSeqno = 0;
     }
 
     add(entryId, key, value) {
         this.validate(entryId);
 
+        if (entryId.slice(-1) == "*") {
+            entryId = this.autogenerateId(entryId);
+        }
+
         if (!(entryId in this.entries)) {
             this.entries[entryId] = {};
         }
 
-        this.lastEntryId = entryId;
         this.entries[entryId][key] = value;
+        [this.lastTimestamp, this.lastSeqno] = this.parseEntry(entryId);
+
+        return entryId;
     }
 
     validate(entryId) {
@@ -64,19 +71,37 @@ class RedisStream {
             "ERR The ID specified in XADD is equal or smaller than the target stream top item",
         );
 
-        if (entryId == this.lastEntryId) {
+        if (entryId == this.buildEntry(this.lastTimestamp, this.lastSeqno)) {
             throw err;
         }
 
-        let [currTimestamp, currSeqno] = entryId.split("-");
-        let [lastTimestamp, lastSeqno] = this.lastEntryId.split("-");
+        let [currTimestamp, currSeqno] = this.parseEntry(entryId);
+
+        if (currSeqno == "*") {
+            return;
+        }
 
         if (
-            currTimestamp < lastTimestamp ||
-            (currTimestamp == lastTimestamp && currSeqno <= lastSeqno)
+            currTimestamp < this.lastTimestamp ||
+            (currTimestamp == this.lastTimestamp && currSeqno <= this.lastSeqno)
         ) {
             throw err;
         }
+    }
+
+    autogenerateId(entryId) {
+        let currTimestamp = this.parseEntry(entryId)[0];
+        let currSeqno =
+            currTimestamp == this.lastTimestamp ? this.lastSeqno + 1 : 0;
+        return this.buildEntry(currTimestamp, currSeqno);
+    }
+
+    parseEntry(entryId) {
+        return entryId.split("-").map((s) => parseInt(s));
+    }
+
+    buildEntry(timestamp, seqno) {
+        return `${timestamp}-${seqno}`;
     }
 }
 

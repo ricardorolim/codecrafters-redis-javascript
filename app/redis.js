@@ -373,7 +373,7 @@ class Redis {
                 }
 
                 try {
-                    stream.add(entryId, entryKey, entryValue);
+                    entryId = stream.add(entryId, entryKey, entryValue);
                     this.db.set(key, stream);
                     resp = new enc.RedisBulkString(entryId);
                 } catch (err) {
