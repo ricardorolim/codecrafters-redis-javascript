@@ -99,3 +99,23 @@ test("decode rdb", async () => {
         baz: ["qux", 1714089298],
     });
 });
+
+test("stream search", async () => {
+    let stream = new rdb.RedisStream();
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            if (i == 0 && j == 0) continue;
+            stream.add(`${i}-${j}`, `k${i}${j}`, `v${i}${j}`);
+        }
+    }
+
+    let entries = stream.search("0-2", "2-0");
+
+    expect(entries).toStrictEqual([
+        ["0-2", ["k02", "v02"]],
+        ["1-0", ["k10", "v10"]],
+        ["1-1", ["k11", "v11"]],
+        ["1-2", ["k12", "v12"]],
+        ["2-0", ["k20", "v20"]],
+    ]);
+});

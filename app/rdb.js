@@ -36,33 +36,74 @@ class RedisDB {
     }
 }
 
+class EntryId {
+    constructor(timestamp, seqno) {
+        this.timestamp = timestamp;
+        this.seqno = seqno;
+    }
+
+    toString() {
+        return `${this.timestamp}-${this.seqno}`;
+    }
+}
+
 class RedisStream {
     constructor() {
-        this.entries = {};
-        this.lastTimestamp = 0;
-        this.lastSeqno = 0;
+        this.entries = new Map();
+        this.lastEntryId = new EntryId(0, 0);
     }
 
-    add(entryId, key, value) {
-        this.validate(entryId);
+    add(entryIdStr, key, value) {
+        this.validate(entryIdStr);
 
-        if (entryId.slice(-1) == "*") {
-            entryId = this.autogenerateId(entryId);
-        }
+        let entryId =
+            entryIdStr.slice(-1) == "*"
+                ? this.autogenerateId(entryIdStr)
+                : this.parseEntryId(entryIdStr);
 
         if (!(entryId in this.entries)) {
-            this.entries[entryId] = {};
+            this.entries.set(entryId, new Map());
         }
 
-        this.entries[entryId][key] = value;
-        [this.lastTimestamp, this.lastSeqno] = this.parseEntry(entryId);
+        this.entries.get(entryId).set(key, value);
+        this.lastEntryId = entryId;
 
-        return entryId;
+        return entryId.toString();
     }
 
-    validate(entryId) {
-        let [currTimestamp, currSeqno] = this.parseEntry(entryId);
-        if (entryId == "*" || currSeqno == "*") {
+    search(startIdStr, stopIdStr) {
+        let startId = this.parseEntryId(startIdStr);
+        let stopId = this.parseEntryId(stopIdStr);
+
+        return [...this.entries.entries()]
+            .filter(([e, _]) => {
+                if (
+                    startId.timestamp < e.timestamp &&
+                    e.timestamp < stopId.timestamp
+                ) {
+                    return true;
+                }
+                if (
+                    startId.timestamp == e.timestamp &&
+                    e.seqno < startId.seqno
+                ) {
+                    return false;
+                }
+                if (stopId.timestamp == e.timestamp && e.seqno > stopId.seqno) {
+                    return false;
+                }
+
+                return true;
+            })
+            .map(([e, kvpairs]) => [
+                e.toString(),
+                [...kvpairs.entries()].flat(),
+            ]);
+    }
+
+    validate(entryIdStr) {
+        let [currTimestamp, currSeqno] = entryIdStr.split("-");
+        if (entryIdStr == "*" || currSeqno == "*") {
             return;
         }
 
@@ -77,31 +118,35 @@ class RedisStream {
         );
 
         if (
-            currTimestamp == this.lastTimestamp &&
-            currSeqno == this.lastSeqno
+            currTimestamp == this.lastEntryId.timestamp &&
+            currSeqno == this.lastEntryId.seqno
         ) {
             throw err;
         }
 
         if (
-            currTimestamp < this.lastTimestamp ||
-            (currTimestamp == this.lastTimestamp && currSeqno <= this.lastSeqno)
+            currTimestamp < this.lastEntryId.timestamp ||
+            (currTimestamp == this.lastEntryId.timestamp &&
+                currSeqno <= this.lastEntryId.seqno)
         ) {
             throw err;
         }
     }
 
-    autogenerateId(entryId) {
-        let currTimestamp =
-            entryId == "*" ? Date.now() : this.parseEntry(entryId)[0];
-        let currSeqno =
-            currTimestamp == this.lastTimestamp ? this.lastSeqno + 1 : 0;
+    autogenerateId(entryIdStr) {
+        let timestamp =
+            entryIdStr == "*" ? Date.now() : entryIdStr.split("-")[0];
+        let seqno =
+            timestamp == this.lastEntryId.timestamp
+                ? this.lastEntryId.seqno + 1
+                : 0;
 
-        return `${currTimestamp}-${currSeqno}`;
+        return new EntryId(timestamp, seqno);
     }
 
-    parseEntry(entryId) {
-        return entryId.split("-").map((s) => parseInt(s));
+    parseEntryId(string) {
+        let parts = string.split("-");
+        return new EntryId(parseInt(parts[0]), parseInt(parts[1]));
     }
 }
 
