@@ -73,7 +73,8 @@ class RedisStream {
 
     search(startIdStr, stopIdStr) {
         let startId = startIdStr === "-" ? 0 : this.parseEntryId(startIdStr);
-        let stopId = this.parseEntryId(stopIdStr);
+        let stopId =
+            stopIdStr === "+" ? Infinity : this.parseEntryId(stopIdStr);
 
         return [...this.entries.entries()]
             .filter(([e, _]) => {
