@@ -482,17 +482,23 @@ class Redis {
 
     process_xread(command, socket) {
         if (command[1].toUpperCase() == "BLOCK") {
+            let timeout = command[2];
             let timedOut = false;
+            let timeoutId = null;
 
-            let timeout = setTimeout(() => {
-                timedOut = true;
-                let resp = new enc.RedisNullBulkString();
-                socket.write(resp.encode());
-            }, command[2]);
+            if (timeout != 0) {
+                timeoutId = setTimeout(() => {
+                    timedOut = true;
+                    let resp = new enc.RedisNullBulkString();
+                    socket.write(resp.encode());
+                }, timeout);
+            }
 
             this.xaddEmitter.on("xadd", () => {
                 if (!timedOut) {
-                    clearTimeout(timeout);
+                    if (timeoutId) {
+                        clearTimeout(timeout);
+                    }
                     this.xread(command.slice(2), socket);
                 }
             });
