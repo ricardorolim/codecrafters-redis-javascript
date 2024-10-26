@@ -479,34 +479,41 @@ class Redis {
     }
 
     process_xread(command, socket) {
-        let [_, key, start] = command.slice(1);
+        let streamArray = [];
 
-        if (!this.db.in(key)) {
-            let resp = new enc.RedisNullBulkString();
-            socket.write(resp);
-            return;
+        // xread streams key1 key2 ... start1 start2 ...
+        command.splice(0, 2);
+
+        for (let i = 0; i < command.length / 2; i++) {
+            let key = command[i];
+            let start = command[command.length / 2 + i];
+
+            if (!this.db.in(key)) {
+                continue;
+            }
+
+            let stream = this.db.get(key);
+            const entries = stream.after(start);
+
+            let entriesArray = entries.map(
+                ([entryId, kvpairs]) =>
+                    new enc.RedisArray([
+                        new enc.RedisBulkString(entryId),
+                        new enc.RedisArray(
+                            kvpairs.map((s) => new enc.RedisBulkString(s)),
+                        ),
+                    ]),
+            );
+
+            streamArray.push(
+                new enc.RedisArray([
+                    new enc.RedisBulkString(key),
+                    new enc.RedisArray(entriesArray),
+                ]),
+            );
         }
 
-        let stream = this.db.get(key);
-        const entries = stream.after(start);
-
-        let entriesArray = entries.map(
-            ([entryId, kvpairs]) =>
-                new enc.RedisArray([
-                    new enc.RedisBulkString(entryId),
-                    new enc.RedisArray(
-                        kvpairs.map((s) => new enc.RedisBulkString(s)),
-                    ),
-                ]),
-        );
-
-        let resp = new enc.RedisArray([
-            new enc.RedisArray([
-                new enc.RedisBulkString(key),
-                new enc.RedisArray(entriesArray),
-            ]),
-        ]);
-
+        let resp = new enc.RedisArray(streamArray);
         socket.write(resp.encode());
     }
 }
