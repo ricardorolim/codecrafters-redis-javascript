@@ -110,6 +110,7 @@ class Redis {
         this.slaveReplOffset = 0;
         this.masterReplOffset = 0;
         this.ackEmitter = new emitter();
+        this.xaddEmitter = new emitter();
     }
 
     setDB(db) {
@@ -445,6 +446,7 @@ class Redis {
             entryId = stream.add(entryId, entryKey, entryValue);
             this.db.set(key, stream);
             resp = new enc.RedisBulkString(entryId);
+            this.xaddEmitter.emit("xadd");
         } catch (err) {
             resp = new enc.RedisSimpleError(err.message);
         }
@@ -479,6 +481,27 @@ class Redis {
     }
 
     process_xread(command, socket) {
+        if (command[1].toUpperCase() == "BLOCK") {
+            let timedOut = false;
+
+            let timeout = setTimeout(() => {
+                timedOut = true;
+                let resp = new enc.RedisNullBulkString();
+                socket.write(resp.encode());
+            }, command[2]);
+
+            this.xaddEmitter.on("xadd", () => {
+                if (!timedOut) {
+                    clearTimeout(timeout);
+                    this.xread(command.slice(2), socket);
+                }
+            });
+        } else {
+            this.xread(command, socket);
+        }
+    }
+
+    xread(command, socket) {
         let streamArray = [];
 
         // xread streams key1 key2 ... start1 start2 ...
