@@ -6,5 +6,8 @@
   },
   "scripts": {
     "test": "jest"
+  },
+  "dependencies": {
+    "neovim": "^5.3.0"
   }
 }

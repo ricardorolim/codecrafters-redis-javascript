@@ -266,6 +266,9 @@ class Redis {
             case "XRANGE":
                 this.process_xrange(command, socket);
                 break;
+            case "XREAD":
+                this.process_xread(command, socket);
+                break;
             default:
                 console.error("unknown command:", command[0]);
         }
@@ -452,11 +455,13 @@ class Redis {
     process_xrange(command, socket) {
         let [key, start, end] = command.slice(1);
 
-        let stream = new rdb.RedisStream();
-        if (this.db.in(key)) {
-            stream = this.db.get(key);
+        if (!this.db.in(key)) {
+            let resp = new enc.RedisArray([]);
+            socket.write(resp);
+            return;
         }
 
+        let stream = this.db.get(key);
         const entries = stream.search(start, end);
 
         let array = entries.map(
@@ -470,6 +475,38 @@ class Redis {
         );
 
         let resp = new enc.RedisArray(array);
+        socket.write(resp.encode());
+    }
+
+    process_xread(command, socket) {
+        let [_, key, start] = command.slice(1);
+
+        if (!this.db.in(key)) {
+            let resp = new enc.RedisNullBulkString();
+            socket.write(resp);
+            return;
+        }
+
+        let stream = this.db.get(key);
+        const entries = stream.after(start);
+
+        let entriesArray = entries.map(
+            ([entryId, kvpairs]) =>
+                new enc.RedisArray([
+                    new enc.RedisBulkString(entryId),
+                    new enc.RedisArray(
+                        kvpairs.map((s) => new enc.RedisBulkString(s)),
+                    ),
+                ]),
+        );
+
+        let resp = new enc.RedisArray([
+            new enc.RedisArray([
+                new enc.RedisBulkString(key),
+                new enc.RedisArray(entriesArray),
+            ]),
+        ]);
+
         socket.write(resp.encode());
     }
 }

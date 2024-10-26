@@ -72,9 +72,8 @@ class RedisStream {
     }
 
     search(startIdStr, stopIdStr) {
-        let startId = startIdStr === "-" ? 0 : this.parseEntryId(startIdStr);
-        let stopId =
-            stopIdStr === "+" ? Infinity : this.parseEntryId(stopIdStr);
+        let startId = this.parseEntryId(startIdStr);
+        let stopId = this.parseEntryId(stopIdStr);
 
         return [...this.entries.entries()]
             .filter(([e, _]) => {
@@ -85,17 +84,36 @@ class RedisStream {
                     return true;
                 }
                 if (
-                    startId.timestamp == e.timestamp &&
+                    startId.timestamp === e.timestamp &&
                     e.seqno < startId.seqno
                 ) {
                     return false;
                 }
-                if (stopId.timestamp == e.timestamp && e.seqno > stopId.seqno) {
+                if (
+                    stopId.timestamp === e.timestamp &&
+                    e.seqno > stopId.seqno
+                ) {
                     return false;
                 }
 
                 return true;
             })
+            .map(([e, kvpairs]) => [
+                e.toString(),
+                [...kvpairs.entries()].flat(),
+            ]);
+    }
+
+    after(startIdStr) {
+        let startId = this.parseEntryId(startIdStr);
+
+        return [...this.entries.entries()]
+            .filter(
+                ([e, _]) =>
+                    startId.timestamp < e.timestamp ||
+                    (startId.timestamp === e.timestamp &&
+                        startId.seqno < e.seqno),
+            )
             .map(([e, kvpairs]) => [
                 e.toString(),
                 [...kvpairs.entries()].flat(),
@@ -146,8 +164,17 @@ class RedisStream {
     }
 
     parseEntryId(string) {
-        let parts = string.split("-");
-        return new EntryId(parseInt(parts[0]), parseInt(parts[1]));
+        let ts, seq;
+
+        if (string === "-") {
+            ts = seq = 0;
+        } else if (string === "+") {
+            ts = seq = Infinity;
+        } else {
+            [ts, seq] = string.split("-");
+        }
+
+        return new EntryId(parseInt(ts), parseInt(seq));
     }
 }
 
