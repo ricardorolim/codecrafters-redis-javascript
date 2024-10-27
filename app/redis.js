@@ -482,6 +482,8 @@ class Redis {
 
     process_xread(command, socket) {
         if (command[1].toUpperCase() == "BLOCK") {
+            this.replace$WithCurrEntryId(command);
+
             let timeout = command[2];
             let timedOut = false;
             let timeoutId = null;
@@ -499,11 +501,27 @@ class Redis {
                     if (timeoutId) {
                         clearTimeout(timeout);
                     }
+                    // slice removes 2 additional arguments: block N
                     this.xread(command.slice(2), socket);
                 }
             });
         } else {
             this.xread(command, socket);
+        }
+    }
+
+    replace$WithCurrEntryId(command) {
+        let firstKey = 4;
+        let keys = (command.length - firstKey) / 2;
+
+        for (let i = firstKey; i < firstKey + keys; i++) {
+            let key = command[i];
+            let startIdx = i + keys;
+
+            if (command[startIdx] === "$" && this.db.in(key)) {
+                let stream = this.db.get(key);
+                command[startIdx] = stream.getLastEntryId();
+            }
         }
     }
 

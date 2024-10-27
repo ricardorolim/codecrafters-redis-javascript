@@ -53,6 +53,10 @@ class RedisStream {
         this.lastEntryId = new EntryId(0, 0);
     }
 
+    getLastEntryId() {
+        return this.lastEntryId.toString();
+    }
+
     add(entryIdStr, key, value) {
         this.validate(entryIdStr);
 
