@@ -111,6 +111,7 @@ class Redis {
         this.masterReplOffset = 0;
         this.ackEmitter = new emitter();
         this.xaddEmitter = new emitter();
+        this.transaction = null;
     }
 
     setDB(db) {
@@ -593,12 +594,20 @@ class Redis {
     }
 
     process_multi(command, socket) {
+        this.transaction = [];
         let resp = new enc.RedisSimpleString("OK");
         socket.write(resp.encode());
     }
 
     process_exec(command, socket) {
-        let resp = new enc.RedisSimpleError("ERR EXEC without MULTI");
+        if (this.transaction === null) {
+            let resp = new enc.RedisSimpleError("ERR EXEC without MULTI");
+            socket.write(resp.encode());
+            return;
+        }
+
+        this.transaction = null;
+        let resp = new enc.RedisArray([]);
         socket.write(resp.encode());
     }
 }
