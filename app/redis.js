@@ -276,6 +276,9 @@ class Redis {
             case "MULTI":
                 this.process_multi(command, socket);
                 break;
+            case "EXEC":
+                this.process_exec(command, socket);
+                break;
             default:
                 console.error("unknown command:", command[0]);
         }
@@ -591,6 +594,11 @@ class Redis {
 
     process_multi(command, socket) {
         let resp = new enc.RedisSimpleString("OK");
+        socket.write(resp.encode());
+    }
+
+    process_exec(command, socket) {
+        let resp = new enc.RedisSimpleError("ERR EXEC without MULTI");
         socket.write(resp.encode());
     }
 }
