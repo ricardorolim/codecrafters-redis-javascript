@@ -270,6 +270,9 @@ class Redis {
             case "XREAD":
                 this.process_xread(command, socket);
                 break;
+            case "INCR":
+                this.process_incr(command, socket);
+                break;
             default:
                 console.error("unknown command:", command[0]);
         }
@@ -561,6 +564,16 @@ class Redis {
         }
 
         let resp = new enc.RedisArray(streamArray);
+        socket.write(resp.encode());
+    }
+
+    process_incr(command, socket) {
+        let key = command[1];
+
+        let val = this.db.get(key);
+        this.db.set(key, ++val);
+
+        let resp = new enc.RedisInteger(val);
         socket.write(resp.encode());
     }
 }
