@@ -23,7 +23,7 @@ class RedisDB {
         this.redis[key] = [value, expiration];
     }
 
-    in(key) {
+    has(key) {
         return key in this.redis;
     }
 

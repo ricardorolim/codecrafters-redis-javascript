@@ -421,7 +421,7 @@ class Redis {
         let key = command[1];
 
         let type = "none";
-        if (this.db.in(key)) {
+        if (this.db.has(key)) {
             type =
                 this.db.get(key) instanceof rdb.RedisStream
                     ? "stream"
@@ -439,7 +439,7 @@ class Redis {
         let entryValue = command[4];
 
         let stream = new rdb.RedisStream();
-        if (this.db.in(key)) {
+        if (this.db.has(key)) {
             stream = this.db.get(key);
         }
 
@@ -460,7 +460,7 @@ class Redis {
     process_xrange(command, socket) {
         let [key, start, end] = command.slice(1);
 
-        if (!this.db.in(key)) {
+        if (!this.db.has(key)) {
             let resp = new enc.RedisArray([]);
             socket.write(resp);
             return;
@@ -521,7 +521,7 @@ class Redis {
             let key = command[i];
             let startIdx = i + keys;
 
-            if (command[startIdx] === "$" && this.db.in(key)) {
+            if (command[startIdx] === "$" && this.db.has(key)) {
                 let stream = this.db.get(key);
                 command[startIdx] = stream.getLastEntryId();
             }
@@ -538,7 +538,7 @@ class Redis {
             let key = command[i];
             let start = command[command.length / 2 + i];
 
-            if (!this.db.in(key)) {
+            if (!this.db.has(key)) {
                 continue;
             }
 
@@ -570,8 +570,9 @@ class Redis {
     process_incr(command, socket) {
         let key = command[1];
 
-        let val = this.db.get(key);
-        this.db.set(key, ++val);
+        let val = this.db.has(key) ? this.db.get(key) : "0";
+        val = (parseInt(val) + 1).toString();
+        this.db.set(key, val);
 
         let resp = new enc.RedisInteger(val);
         socket.write(resp.encode());
