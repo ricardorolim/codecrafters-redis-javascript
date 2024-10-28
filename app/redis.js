@@ -273,6 +273,9 @@ class Redis {
             case "INCR":
                 this.process_incr(command, socket);
                 break;
+            case "MULTI":
+                this.process_multi(command, socket);
+                break;
             default:
                 console.error("unknown command:", command[0]);
         }
@@ -583,6 +586,11 @@ class Redis {
         this.db.set(key, val);
 
         let resp = new enc.RedisInteger(val);
+        socket.write(resp.encode());
+    }
+
+    process_multi(command, socket) {
+        let resp = new enc.RedisSimpleString("OK");
         socket.write(resp.encode());
     }
 }
