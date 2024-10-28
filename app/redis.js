@@ -571,6 +571,14 @@ class Redis {
         let key = command[1];
 
         let val = this.db.has(key) ? this.db.get(key) : "0";
+        if (isNaN(val)) {
+            let resp = new enc.RedisSimpleError(
+                "ERR value is not an integer or out of range",
+            );
+            socket.write(resp.encode());
+            return;
+        }
+
         val = (parseInt(val) + 1).toString();
         this.db.set(key, val);
 
