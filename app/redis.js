@@ -111,7 +111,7 @@ class Redis {
         this.masterReplOffset = 0;
         this.ackEmitter = new emitter();
         this.xaddEmitter = new emitter();
-        this.transaction = null;
+        this.transaction = new Map();
     }
 
     setDB(db) {
@@ -228,6 +228,14 @@ class Redis {
     }
 
     async process(command, socket) {
+        if (
+            this.transaction.has(socket) &&
+            command[0].toUpperCase() !== "EXEC"
+        ) {
+            this.enqueue_command(command, socket);
+            return;
+        }
+
         switch (command[0].toUpperCase()) {
             case "ECHO":
                 this.process_echo(command, socket);
@@ -594,20 +602,27 @@ class Redis {
     }
 
     process_multi(command, socket) {
-        this.transaction = [];
+        this.transaction.set(socket, []);
         let resp = new enc.RedisSimpleString("OK");
         socket.write(resp.encode());
     }
 
     process_exec(command, socket) {
-        if (this.transaction === null) {
+        if (!this.transaction.has(socket)) {
             let resp = new enc.RedisSimpleError("ERR EXEC without MULTI");
             socket.write(resp.encode());
             return;
         }
 
-        this.transaction = null;
+        this.transaction.delete(socket);
         let resp = new enc.RedisArray([]);
+        socket.write(resp.encode());
+    }
+
+    enqueue_command(command, socket) {
+        this.transaction.get(socket).push(command);
+
+        let resp = new enc.RedisSimpleString("QUEUED");
         socket.write(resp.encode());
     }
 }
