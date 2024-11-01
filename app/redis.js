@@ -228,9 +228,11 @@ class Redis {
     }
 
     async process(command, socket) {
+        let cmdName = command[0].toUpperCase();
         if (
             this.transaction.has(socket) &&
-            command[0].toUpperCase() !== "EXEC"
+            cmdName !== "EXEC" &&
+            cmdName !== "DISCARD"
         ) {
             this.enqueueCommand(command, socket);
             return;
@@ -243,7 +245,7 @@ class Redis {
         }
 
         // administrative, blocking or transaction commands
-        switch (command[0].toUpperCase()) {
+        switch (cmdName) {
             case "CONFIG":
                 this.processConfig(command, socket);
                 break;
@@ -270,6 +272,9 @@ class Redis {
                 break;
             case "EXEC":
                 this.processExec(command, socket);
+                break;
+            case "DISCARD":
+                this.processDiscard(command, socket);
                 break;
             default:
                 console.error("unknown command:", command[0]);
@@ -594,13 +599,13 @@ class Redis {
         return new enc.RedisInteger(val);
     }
 
-    processMulti(command, socket) {
+    processMulti(_, socket) {
         this.transaction.set(socket, []);
         let resp = new enc.RedisSimpleString("OK");
         socket.write(resp.encode());
     }
 
-    async processExec(command, socket) {
+    processExec(_, socket) {
         if (!this.transaction.has(socket)) {
             let resp = new enc.RedisSimpleError("ERR EXEC without MULTI");
             socket.write(resp.encode());
@@ -622,6 +627,20 @@ class Redis {
         this.transaction.get(socket).push(command);
 
         let resp = new enc.RedisSimpleString("QUEUED");
+        socket.write(resp.encode());
+    }
+
+    processDiscard(_, socket) {
+        let resp;
+
+        if (this.transaction.get(socket)) {
+            this.transaction.delete(socket);
+
+            resp = new enc.RedisSimpleString("OK");
+        } else {
+            resp = new enc.RedisSimpleError("ERR DISCARD without MULTI");
+        }
+
         socket.write(resp.encode());
     }
 }
