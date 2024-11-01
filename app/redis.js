@@ -232,73 +232,76 @@ class Redis {
             this.transaction.has(socket) &&
             command[0].toUpperCase() !== "EXEC"
         ) {
-            this.enqueue_command(command, socket);
+            this.enqueueCommand(command, socket);
             return;
         }
 
+        let resp = this.processDataCmd(command);
+        if (resp) {
+            socket.write(resp.encode());
+            return;
+        }
+
+        // administrative, blocking or transaction commands
         switch (command[0].toUpperCase()) {
-            case "ECHO":
-                this.process_echo(command, socket);
-                break;
-            case "SET":
-                this.process_set(command, socket);
-                break;
-            case "GET":
-                this.process_get(command, socket);
-                break;
-            case "PING":
-                this.process_ping(socket);
-                break;
             case "CONFIG":
-                this.process_config(command, socket);
+                this.processConfig(command, socket);
                 break;
             case "KEYS":
-                this.process_keys(command, socket);
+                this.processKeys(command, socket);
                 break;
             case "INFO":
-                this.process_info(command, socket);
+                this.processInfo(command, socket);
                 break;
             case "REPLCONF":
-                this.process_replconf(command, socket);
+                this.processReplconf(command, socket);
                 break;
             case "PSYNC":
-                this.process_psync(socket, socket);
+                this.processPsync(socket, socket);
                 break;
             case "WAIT":
-                this.process_wait(command, socket);
-                break;
-            case "TYPE":
-                this.process_type(command, socket);
-                break;
-            case "XADD":
-                this.process_xadd(command, socket);
-                break;
-            case "XRANGE":
-                this.process_xrange(command, socket);
+                this.processWait(command, socket);
                 break;
             case "XREAD":
-                this.process_xread(command, socket);
-                break;
-            case "INCR":
-                this.process_incr(command, socket);
+                this.processXread(command, socket);
                 break;
             case "MULTI":
-                this.process_multi(command, socket);
+                this.processMulti(command, socket);
                 break;
             case "EXEC":
-                this.process_exec(command, socket);
+                this.processExec(command, socket);
                 break;
             default:
                 console.error("unknown command:", command[0]);
         }
     }
 
-    process_echo(command, socket) {
-        let resp = new enc.RedisBulkString(command[1]);
-        socket.write(resp.encode());
+    processDataCmd(command) {
+        switch (command[0].toUpperCase()) {
+            case "ECHO":
+                return this.processEcho(command);
+            case "SET":
+                return this.processSet(command);
+            case "GET":
+                return this.processGet(command);
+            case "PING":
+                return this.processPing(command);
+            case "TYPE":
+                return this.processType(command);
+            case "XADD":
+                return this.processAdd(command);
+            case "INCR":
+                return this.processIncr(command);
+            case "XRANGE":
+                return this.processXrange(command);
+        }
     }
 
-    process_set(command, socket) {
+    processEcho(command) {
+        return new enc.RedisBulkString(command[1]);
+    }
+
+    processSet(command) {
         let key = command[1];
         let value = command[2];
         let expiration = Infinity;
@@ -310,31 +313,27 @@ class Redis {
         this.db.set(key, value, expiration);
 
         if (this.isMaster()) {
-            let resp = new enc.RedisSimpleString("OK");
-            socket.write(resp.encode());
-
             this.sendToSlaves(command);
+
+            return new enc.RedisSimpleString("OK");
         }
     }
 
-    process_get(command, socket) {
+    processGet(command) {
         let key = command[1];
         let value = this.db.get(key);
-        let resp =
-            value !== undefined
-                ? new enc.RedisBulkString(value)
-                : new enc.RedisNullBulkString();
-        socket.write(resp.encode());
+        return value !== undefined
+            ? new enc.RedisBulkString(value)
+            : new enc.RedisNullBulkString();
     }
 
-    process_ping(socket) {
-        let resp = new enc.RedisSimpleString("PONG");
+    processPing(command) {
         if (this.isMaster()) {
-            socket.write(resp.encode());
+            return new enc.RedisSimpleString("PONG");
         }
     }
 
-    process_config(command, socket) {
+    processConfig(command, socket) {
         if (command[1] == "GET") {
             let key = command[2];
             let keyBulkString = new enc.RedisBulkString(key);
@@ -344,7 +343,7 @@ class Redis {
         }
     }
 
-    process_keys(command, socket) {
+    processKeys(command, socket) {
         if (command[1] == "*") {
             let keys = this.db
                 .keys()
@@ -354,7 +353,7 @@ class Redis {
         }
     }
 
-    process_info(command, socket) {
+    processInfo(command, socket) {
         if (command[1].toLowerCase() == "replication") {
             let role = this.info.toString();
             let resp = new enc.RedisBulkString(role);
@@ -362,7 +361,7 @@ class Redis {
         }
     }
 
-    process_replconf(command, socket) {
+    processReplconf(command, socket) {
         if (command[1] == "GETACK") {
             // request from master
             let offset = this.slaveReplOffset;
@@ -382,7 +381,7 @@ class Redis {
         }
     }
 
-    process_psync(_, socket) {
+    processPsync(_, socket) {
         let resp = new enc.RedisSimpleString(
             `FULLRESYNC ${this.info.master_replid} 0`,
         );
@@ -397,7 +396,7 @@ class Redis {
         this.slaves.push(socket);
     }
 
-    async process_wait(command, socket) {
+    async processWait(command, socket) {
         let nreplicas = command[1];
         let waitMs = parseInt(command[2]);
         let count = 0;
@@ -432,7 +431,7 @@ class Redis {
         socket.write(resp.encode());
     }
 
-    process_type(command, socket) {
+    processType(command) {
         let key = command[1];
 
         let type = "none";
@@ -443,11 +442,10 @@ class Redis {
                     : "string";
         }
 
-        let resp = new enc.RedisSimpleString(type);
-        socket.write(resp.encode());
+        return new enc.RedisSimpleString(type);
     }
 
-    process_xadd(command, socket) {
+    processAdd(command) {
         let key = command[1];
         let entryId = command[2];
         let entryKey = command[3];
@@ -469,16 +467,14 @@ class Redis {
             resp = new enc.RedisSimpleError(err.message);
         }
 
-        socket.write(resp.encode());
+        return resp;
     }
 
-    process_xrange(command, socket) {
+    processXrange(command) {
         let [key, start, end] = command.slice(1);
 
         if (!this.db.has(key)) {
-            let resp = new enc.RedisArray([]);
-            socket.write(resp);
-            return;
+            return new enc.RedisArray([]);
         }
 
         let stream = this.db.get(key);
@@ -494,11 +490,10 @@ class Redis {
                 ]),
         );
 
-        let resp = new enc.RedisArray(array);
-        socket.write(resp.encode());
+        return new enc.RedisArray(array);
     }
 
-    process_xread(command, socket) {
+    processXread(command, socket) {
         if (command[1].toUpperCase() == "BLOCK") {
             this.replace$WithCurrEntryId(command);
 
@@ -582,7 +577,7 @@ class Redis {
         socket.write(resp.encode());
     }
 
-    process_incr(command, socket) {
+    processIncr(command) {
         let key = command[1];
 
         let val = this.db.has(key) ? this.db.get(key) : "0";
@@ -590,36 +585,40 @@ class Redis {
             let resp = new enc.RedisSimpleError(
                 "ERR value is not an integer or out of range",
             );
-            socket.write(resp.encode());
-            return;
+            return resp;
         }
 
         val = (parseInt(val) + 1).toString();
         this.db.set(key, val);
 
-        let resp = new enc.RedisInteger(val);
-        socket.write(resp.encode());
+        return new enc.RedisInteger(val);
     }
 
-    process_multi(command, socket) {
+    processMulti(command, socket) {
         this.transaction.set(socket, []);
         let resp = new enc.RedisSimpleString("OK");
         socket.write(resp.encode());
     }
 
-    process_exec(command, socket) {
+    async processExec(command, socket) {
         if (!this.transaction.has(socket)) {
             let resp = new enc.RedisSimpleError("ERR EXEC without MULTI");
             socket.write(resp.encode());
             return;
         }
 
-        this.transaction.delete(socket);
-        let resp = new enc.RedisArray([]);
+        let respArray = [];
+        for (let cmd of this.transaction.get(socket)) {
+            respArray.push(this.processDataCmd(cmd, socket));
+        }
+
+        let resp = new enc.RedisArray(respArray);
         socket.write(resp.encode());
+
+        this.transaction.delete(socket);
     }
 
-    enqueue_command(command, socket) {
+    enqueueCommand(command, socket) {
         this.transaction.get(socket).push(command);
 
         let resp = new enc.RedisSimpleString("QUEUED");
